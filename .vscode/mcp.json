@@ -1,0 +1,21 @@
+{
+  "servers" : {
+    "Framelink Figma MCP": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "figma-developer-mcp", "--figma-api-key=xxx", "--stdio"]
+    },
+    "Azure DevOps Assistant": {
+            "command": "C:\\Users\\Jhen Ye\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\uv.exe",
+            "args": [
+                "--directory",
+                "C:\\91App\\mcp-azure-devops\\src\\mcp_azure_devops",
+                "run",
+                "--with",
+                "mcp[cli]",
+                "mcp",
+                "run",
+                "C:\\91App\\mcp-azure-devops\\src\\mcp_azure_devops\\server.py"
+            ]
+        }
+  }
+}
