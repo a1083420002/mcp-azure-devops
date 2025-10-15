@@ -8,6 +8,7 @@ from mcp_azure_devops.features.work_items.tools.create import (
     _build_link_document,
     _create_work_item_impl,
     _ensure_system_prefix,
+    _find_tested_by_relation_index,
     _get_organization_url,
     _prepare_standard_fields,
     _update_work_item_impl,
@@ -336,3 +337,213 @@ def test_ensure_system_prefix():
 
     # Test with unknown field - should return as is
     assert _ensure_system_prefix("CustomField") == "CustomField"
+
+
+@patch(
+    "mcp_azure_devops.features.work_items.tools.create._get_organization_url"
+)
+def test_create_work_item_impl_with_tested_by(mock_get_org_url):
+    """Test creating a work item with tested by relationship."""
+    # Arrange
+    mock_client = MagicMock()
+
+    # Create mock for new work item
+    mock_work_item = MagicMock(spec=WorkItem)
+    mock_work_item.id = 123
+    mock_work_item.fields = {
+        "System.WorkItemType": "User Story",
+        "System.Title": "Test Story",
+        "System.State": "New",
+        "System.TeamProject": "Test Project",
+    }
+
+    # Setup organization URL
+    mock_get_org_url.return_value = "https://dev.azure.com/org"
+
+    # Setup mock returns for create and update
+    mock_client.create_work_item.return_value = mock_work_item
+    mock_client.update_work_item.return_value = mock_work_item
+
+    # Fields to create work item
+    fields = {
+        "System.Title": "Test Story",
+        "System.Description": "This is a test story",
+    }
+
+    # Act
+    result = _create_work_item_impl(
+        fields=fields,
+        project="Test Project",
+        work_item_type="User Story",
+        wit_client=mock_client,
+        tested_by_ids=[789, 790],
+    )
+
+    # Assert
+    mock_client.create_work_item.assert_called_once()
+    assert mock_client.update_work_item.call_count == 2  # Two test case links
+
+    # Verify update_work_item was called with correct link documents
+    calls = mock_client.update_work_item.call_args_list
+
+    # First call should be for test case 789
+    document = calls[0][1]["document"]
+    assert document[0].path == "/relations/-"
+    assert document[0].value["rel"] == "Microsoft.VSTS.Common.TestedBy"
+    assert (
+        document[0].value["url"]
+        == "https://dev.azure.com/org/_apis/wit/workItems/789"
+    )
+
+    # Second call should be for test case 790
+    document = calls[1][1]["document"]
+    assert document[0].path == "/relations/-"
+    assert document[0].value["rel"] == "Microsoft.VSTS.Common.TestedBy"
+    assert (
+        document[0].value["url"]
+        == "https://dev.azure.com/org/_apis/wit/workItems/790"
+    )
+
+    # Check result formatting
+    assert "# Work Item 123" in result
+    assert "**System.Title**: Test Story" in result
+
+
+@patch(
+    "mcp_azure_devops.features.work_items.tools.create._get_organization_url"
+)
+def test_update_work_item_impl_with_tested_by(mock_get_org_url):
+    """Test updating a work item with tested by relationships."""
+    # Arrange
+    mock_client = MagicMock()
+
+    # Create mock for work item
+    mock_work_item = MagicMock(spec=WorkItem)
+    mock_work_item.id = 123
+    mock_work_item.fields = {
+        "System.WorkItemType": "Bug",
+        "System.Title": "Updated Bug",
+        "System.State": "Active",
+        "System.TeamProject": "Test Project",
+    }
+
+    # Setup organization URL
+    mock_get_org_url.return_value = "https://dev.azure.com/org"
+
+    # Setup mock returns
+    mock_client.update_work_item.return_value = mock_work_item
+
+    # Act - Update with tested_by_ids
+    result = _update_work_item_impl(
+        id=123,
+        fields={},
+        wit_client=mock_client,
+        project="Test Project",
+        tested_by_ids=[456, 457],
+    )
+
+    # Assert
+    assert mock_client.update_work_item.call_count == 2
+
+    # Verify calls
+    calls = mock_client.update_work_item.call_args_list
+
+    # First call should be for test case 456
+    document = calls[0][1]["document"]
+    assert document[0].path == "/relations/-"
+    assert document[0].value["rel"] == "Microsoft.VSTS.Common.TestedBy"
+
+    # Second call should be for test case 457
+    document = calls[1][1]["document"]
+    assert document[0].path == "/relations/-"
+    assert document[0].value["rel"] == "Microsoft.VSTS.Common.TestedBy"
+
+    # Check result
+    assert "# Work Item 123" in result
+
+
+@patch(
+    "mcp_azure_devops.features.work_items.tools.create._get_organization_url"
+)
+def test_update_work_item_impl_remove_tested_by(mock_get_org_url):
+    """Test removing tested by relationships from a work item."""
+    # Arrange
+    mock_client = MagicMock()
+
+    # Create mock for work item with existing relations
+    mock_relation = MagicMock()
+    mock_relation.rel = "Microsoft.VSTS.Common.TestedBy"
+    mock_relation.url = "https://dev.azure.com/org/_apis/wit/workItems/456"
+
+    mock_work_item = MagicMock(spec=WorkItem)
+    mock_work_item.id = 123
+    mock_work_item.relations = [mock_relation]
+    mock_work_item.fields = {
+        "System.WorkItemType": "Bug",
+        "System.Title": "Test Bug",
+        "System.State": "Active",
+        "System.TeamProject": "Test Project",
+    }
+
+    # Setup organization URL
+    mock_get_org_url.return_value = "https://dev.azure.com/org"
+
+    # Setup mock returns
+    mock_client.get_work_item.return_value = mock_work_item
+    mock_client.update_work_item.return_value = mock_work_item
+
+    # Act - Remove tested_by link
+    result = _update_work_item_impl(
+        id=123,
+        fields={},
+        wit_client=mock_client,
+        project="Test Project",
+        remove_tested_by_ids=[456],
+    )
+
+    # Assert
+    mock_client.update_work_item.assert_called_once()
+
+    # Verify remove operation
+    args, kwargs = mock_client.update_work_item.call_args
+    document = kwargs.get("document") or args[0]
+    assert document[0].op == "remove"
+    assert "/relations/0" in document[0].path
+
+    # Check result
+    assert "# Work Item 123" in result
+
+
+def test_find_tested_by_relation_index():
+    """Test finding the index of a tested by link."""
+    # Arrange
+    mock_relation1 = MagicMock()
+    mock_relation1.rel = "System.LinkTypes.Related"
+    mock_relation1.url = "https://dev.azure.com/org/_apis/wit/workItems/100"
+
+    mock_relation2 = MagicMock()
+    mock_relation2.rel = "Microsoft.VSTS.Common.TestedBy"
+    mock_relation2.url = "https://dev.azure.com/org/_apis/wit/workItems/456"
+
+    mock_relation3 = MagicMock()
+    mock_relation3.rel = "Microsoft.VSTS.Common.TestedBy"
+    mock_relation3.url = "https://dev.azure.com/org/_apis/wit/workItems/789"
+
+    mock_work_item = MagicMock()
+    mock_work_item.relations = [mock_relation1, mock_relation2, mock_relation3]
+
+    org_url = "https://dev.azure.com/org"
+
+    # Act & Assert
+    # Should find the tested by link at index 1
+    assert _find_tested_by_relation_index(mock_work_item, 456, org_url) == 1
+
+    # Should find the tested by link at index 2
+    assert _find_tested_by_relation_index(mock_work_item, 789, org_url) == 2
+
+    # Should raise exception when not found
+    try:
+        _find_tested_by_relation_index(mock_work_item, 999, org_url)
+        assert False, "Expected exception to be raised"
+    except Exception as e:
+        assert "Tested By link to work item 999 not found" in str(e)
