@@ -95,6 +95,7 @@ def _create_work_item_impl(
     parent_id: Optional[int] = None,
     acceptance_criteria: Optional[str] = None,
     related_ids: Optional[list[int]] = None,
+    tested_by_ids: Optional[list[int]] = None,
 ) -> str:
     """
     Implementation of creating a work item.
@@ -110,6 +111,8 @@ def _create_work_item_impl(
         acceptance_criteria: Optional acceptance criteria. You can provide content in HTML, Markdown, or plain text format. HTML content is preserved as-is, Markdown is automatically converted to HTML, and plain text has line breaks converted to HTML break tags for proper display in Azure DevOps.
         related_ids: Optional list of work item IDs to link as related (integers). Example: [502199, 502200]
                     Each ID should be a positive integer representing work items in Azure DevOps.
+        tested_by_ids: Optional list of test case work item IDs to link as tested by (integers). Example: [502199, 502200]
+                      Each ID should be a positive integer representing test case work items in Azure DevOps.
 
     Returns:
         Formatted string containing the created work item details
@@ -165,9 +168,23 @@ def _create_work_item_impl(
                     id=new_work_item.id,
                     project=project,
                 )
+        # Tested By links
+        if tested_by_ids:
+            for tested_id in tested_by_ids:
+                tested_id = int(tested_id)  # Ensure integer conversion
+                tested_document = _build_link_document(
+                    target_id=tested_id,
+                    link_type="Microsoft.VSTS.Common.TestedBy-Forward",
+                    org_url=org_url,
+                )
+                new_work_item = wit_client.update_work_item(
+                    document=tested_document,
+                    id=new_work_item.id,
+                    project=project,
+                )
     except Exception as e:
         return (
-            f"Work item created successfully, but failed to establish parent/related links: {str(e)}\n\n"
+            f"Work item created successfully, but failed to establish parent/related/tested by links: {str(e)}\n\n"
             f"{format_work_item(new_work_item)}"
         )
     return format_work_item(new_work_item)
@@ -424,6 +441,7 @@ def register_tools(mcp) -> None:
         assigned_to: Optional[str] = None,
         parent_id: Optional[int] = None,
         related_ids: Optional[list[int]] = None,
+        tested_by_ids: Optional[list[int]] = None,
         iteration_path: Optional[str] = None,
         area_path: Optional[str] = None,
         story_points: Optional[float] = None,
@@ -455,6 +473,8 @@ def register_tools(mcp) -> None:
             state: Optional initial state for the work item
             assigned_to: Optional user email to assign the work item to
             parent_id: Optional ID of parent work item for hierarchy
+            related_ids: Optional list of work item IDs to link as related
+            tested_by_ids: Optional list of test case work item IDs to link as tested by
             iteration_path: Optional iteration path for the work item
             area_path: Optional area path for the work item
             story_points: Optional story points value
@@ -504,6 +524,7 @@ def register_tools(mcp) -> None:
                 parent_id=parent_id,
                 acceptance_criteria=acceptance_criteria,
                 related_ids=related_ids,
+                tested_by_ids=tested_by_ids,
             )
 
         except AzureDevOpsClientError as e:

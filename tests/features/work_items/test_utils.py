@@ -1,6 +1,5 @@
 """Tests for work item utilities."""
 
-
 from mcp_azure_devops.features.work_items.tools.utils import (
     _is_html_content,
     _is_markdown_content,
@@ -67,7 +66,9 @@ class TestIsMarkdownContent:
 
     def test_recognizes_links_and_images(self):
         """Test that Markdown links and images are recognized."""
-        assert _is_markdown_content("Check out [this link](http://example.com)")
+        assert _is_markdown_content(
+            "Check out [this link](http://example.com)"
+        )
         assert _is_markdown_content("![Alt text](image.png)")
 
     def test_recognizes_blockquotes(self):
@@ -90,7 +91,9 @@ class TestIsMarkdownContent:
         """Test that plain text is not recognized as Markdown."""
         assert not _is_markdown_content("This is plain text")
         assert not _is_markdown_content("Text without any markdown formatting")
-        assert not _is_markdown_content("Some text with punctuation! And numbers 123.")
+        assert not _is_markdown_content(
+            "Some text with punctuation! And numbers 123."
+        )
 
     def test_empty_or_none_input(self):
         """Test handling of empty input."""
@@ -117,7 +120,10 @@ class TestSanitizeDescriptionHtml:
         assert sanitize_description_html(html_content) == html_content
 
         html_with_attributes = '<span class="highlight">Important</span>'
-        assert sanitize_description_html(html_with_attributes) == html_with_attributes
+        assert (
+            sanitize_description_html(html_with_attributes)
+            == html_with_attributes
+        )
 
     def test_converts_markdown_to_html(self):
         """Test that Markdown is converted to HTML."""
@@ -126,7 +132,9 @@ class TestSanitizeDescriptionHtml:
         assert "<h1>Main Header</h1>" in result
 
         # Test emphasis
-        result = sanitize_description_html("Text with **bold** and *italic* content")
+        result = sanitize_description_html(
+            "Text with **bold** and *italic* content"
+        )
         assert "<strong>bold</strong>" in result
         assert "<em>italic</em>" in result
 
@@ -137,7 +145,9 @@ class TestSanitizeDescriptionHtml:
         assert "<li>Item 1</li>" in result
 
         # Test links
-        result = sanitize_description_html("Check out [this link](http://example.com)")
+        result = sanitize_description_html(
+            "Check out [this link](http://example.com)"
+        )
         assert '<a href="http://example.com">this link</a>' in result
 
         # Test code
@@ -178,7 +188,7 @@ def hello_world():
 For more details, see [our documentation](http://docs.example.com).
 """
         result = sanitize_description_html(complex_markdown)
-        
+
         # Verify key elements are converted
         assert "<h1>Project Requirements</h1>" in result
         assert "<h2>Overview</h2>" in result
@@ -187,12 +197,16 @@ For more details, see [our documentation](http://docs.example.com).
         assert "<code>inline code</code>" in result
         assert "<pre><code" in result  # Code block
         assert "<blockquote>" in result
-        assert '<a href="http://docs.example.com">our documentation</a>' in result
+        assert (
+            '<a href="http://docs.example.com">our documentation</a>' in result
+        )
 
     def test_edge_cases(self):
         """Test edge cases and mixed content."""
         # Mixed content that could be ambiguous
-        mixed_content = "This has *some* markdown but also <strong>HTML</strong>"
+        mixed_content = (
+            "This has *some* markdown but also <strong>HTML</strong>"
+        )
         result = sanitize_description_html(mixed_content)
         # Should preserve HTML since HTML detection takes precedence
         assert "<strong>HTML</strong>" in result
