@@ -336,3 +336,260 @@ def test_ensure_system_prefix():
 
     # Test with unknown field - should return as is
     assert _ensure_system_prefix("CustomField") == "CustomField"
+
+
+@patch(
+    "mcp_azure_devops.features.work_items.tools.create._get_organization_url"
+)
+def test_create_work_item_impl_with_tested_by_ids(mock_get_org_url):
+    """Test creating a work item with tested by relationships."""
+    # Arrange
+    mock_client = MagicMock()
+
+    # Create mock for new work item
+    mock_work_item = MagicMock(spec=WorkItem)
+    mock_work_item.id = 123
+    mock_work_item.fields = {
+        "System.WorkItemType": "User Story",
+        "System.Title": "Test Story",
+        "System.State": "New",
+        "System.TeamProject": "Test Project",
+    }
+
+    # Setup organization URL
+    mock_get_org_url.return_value = "https://dev.azure.com/org"
+
+    # Setup mock returns for create and update
+    mock_client.create_work_item.return_value = mock_work_item
+    mock_client.update_work_item.return_value = mock_work_item
+
+    # Fields to create work item
+    fields = {
+        "System.Title": "Test Story",
+        "System.Description": "This is a test story",
+    }
+
+    # Act
+    result = _create_work_item_impl(
+        fields=fields,
+        project="Test Project",
+        work_item_type="User Story",
+        wit_client=mock_client,
+        tested_by_ids=[502199, 502200],
+    )
+
+    # Assert
+    mock_client.create_work_item.assert_called_once()
+    # Should be called twice for the two tested by links
+    assert mock_client.update_work_item.call_count == 2
+
+    # Verify the link documents for tested by links
+    calls = mock_client.update_work_item.call_args_list
+    # First call should be for tested by link to 502199
+    first_call_document = calls[0][1]["document"]
+    assert first_call_document[0].path == "/relations/-"
+    assert (
+        first_call_document[0].value["rel"]
+        == "Microsoft.VSTS.Common.TestedBy-Forward"
+    )
+    assert (
+        first_call_document[0].value["url"]
+        == "https://dev.azure.com/org/_apis/wit/workItems/502199"
+    )
+
+    # Second call should be for tested by link to 502200
+    second_call_document = calls[1][1]["document"]
+    assert second_call_document[0].path == "/relations/-"
+    assert (
+        second_call_document[0].value["rel"]
+        == "Microsoft.VSTS.Common.TestedBy-Forward"
+    )
+    assert (
+        second_call_document[0].value["url"]
+        == "https://dev.azure.com/org/_apis/wit/workItems/502200"
+    )
+
+    # Check result formatting
+    assert "# Work Item 123" in result
+    assert "**System.Title**: Test Story" in result
+
+
+@patch(
+    "mcp_azure_devops.features.work_items.tools.create._get_organization_url"
+)
+def test_create_work_item_impl_with_all_link_types(mock_get_org_url):
+    """Test creating a work item with parent, related, and tested by links."""
+    # Arrange
+    mock_client = MagicMock()
+
+    # Create mock for new work item
+    mock_work_item = MagicMock(spec=WorkItem)
+    mock_work_item.id = 123
+    mock_work_item.fields = {
+        "System.WorkItemType": "Bug",
+        "System.Title": "Test Bug",
+        "System.State": "New",
+        "System.TeamProject": "Test Project",
+    }
+
+    # Setup organization URL
+    mock_get_org_url.return_value = "https://dev.azure.com/org"
+
+    # Setup mock returns for create and update
+    mock_client.create_work_item.return_value = mock_work_item
+    mock_client.update_work_item.return_value = mock_work_item
+
+    # Fields to create work item
+    fields = {
+        "System.Title": "Test Bug",
+        "System.Description": "This is a test bug",
+    }
+
+    # Act
+    result = _create_work_item_impl(
+        fields=fields,
+        project="Test Project",
+        work_item_type="Bug",
+        wit_client=mock_client,
+        parent_id=456,
+        related_ids=[789],
+        tested_by_ids=[502199],
+    )
+
+    # Assert
+    mock_client.create_work_item.assert_called_once()
+    # Should be called 3 times: 1 for parent, 1 for related, 1 for tested by
+    assert mock_client.update_work_item.call_count == 3
+
+    # Verify the link documents
+    calls = mock_client.update_work_item.call_args_list
+
+    # First call should be for parent link
+    first_call_document = calls[0][1]["document"]
+    assert first_call_document[0].path == "/relations/-"
+    assert (
+        first_call_document[0].value["rel"]
+        == "System.LinkTypes.Hierarchy-Reverse"
+    )
+
+    # Second call should be for related link
+    second_call_document = calls[1][1]["document"]
+    assert second_call_document[0].path == "/relations/-"
+    assert second_call_document[0].value["rel"] == "System.LinkTypes.Related"
+
+    # Third call should be for tested by link
+    third_call_document = calls[2][1]["document"]
+    assert third_call_document[0].path == "/relations/-"
+    assert (
+        third_call_document[0].value["rel"]
+        == "Microsoft.VSTS.Common.TestedBy-Forward"
+    )
+
+    # Check result formatting
+    assert "# Work Item 123" in result
+    assert "**System.Title**: Test Bug" in result
+
+
+@patch(
+    "mcp_azure_devops.features.work_items.tools.create._get_organization_url"
+)
+def test_create_work_item_impl_with_empty_tested_by_ids(mock_get_org_url):
+    """Test creating a work item with empty tested by list."""
+    # Arrange
+    mock_client = MagicMock()
+
+    # Create mock for new work item
+    mock_work_item = MagicMock(spec=WorkItem)
+    mock_work_item.id = 123
+    mock_work_item.fields = {
+        "System.WorkItemType": "Bug",
+        "System.Title": "Test Bug",
+        "System.State": "New",
+        "System.TeamProject": "Test Project",
+    }
+
+    # Setup organization URL
+    mock_get_org_url.return_value = "https://dev.azure.com/org"
+
+    # Setup mock returns for create and update
+    mock_client.create_work_item.return_value = mock_work_item
+
+    # Fields to create work item
+    fields = {
+        "System.Title": "Test Bug",
+        "System.Description": "This is a test bug",
+    }
+
+    # Act
+    result = _create_work_item_impl(
+        fields=fields,
+        project="Test Project",
+        work_item_type="Bug",
+        wit_client=mock_client,
+        tested_by_ids=[],
+    )
+
+    # Assert
+    mock_client.create_work_item.assert_called_once()
+    # Should not be called for links since list is empty
+    mock_client.update_work_item.assert_not_called()
+
+    # Check result formatting
+    assert "# Work Item 123" in result
+    assert "**System.Title**: Test Bug" in result
+
+
+@patch(
+    "mcp_azure_devops.features.work_items.tools.create._get_organization_url"
+)
+def test_create_work_item_impl_tested_by_link_failure(mock_get_org_url):
+    """Test error handling when tested by link creation fails."""
+    # Arrange
+    mock_client = MagicMock()
+
+    # Create mock for new work item
+    mock_work_item = MagicMock(spec=WorkItem)
+    mock_work_item.id = 123
+    mock_work_item.fields = {
+        "System.WorkItemType": "Bug",
+        "System.Title": "Test Bug",
+        "System.State": "New",
+        "System.TeamProject": "Test Project",
+    }
+
+    # Setup organization URL
+    mock_get_org_url.return_value = "https://dev.azure.com/org"
+
+    # Setup mock returns
+    mock_client.create_work_item.return_value = mock_work_item
+    # Simulate failure when creating tested by link
+    mock_client.update_work_item.side_effect = Exception(
+        "Invalid test case ID"
+    )
+
+    # Fields to create work item
+    fields = {
+        "System.Title": "Test Bug",
+        "System.Description": "This is a test bug",
+    }
+
+    # Act
+    result = _create_work_item_impl(
+        fields=fields,
+        project="Test Project",
+        work_item_type="Bug",
+        wit_client=mock_client,
+        tested_by_ids=[999999],
+    )
+
+    # Assert
+    mock_client.create_work_item.assert_called_once()
+    mock_client.update_work_item.assert_called_once()
+
+    # Should return error message but still include work item details
+    assert (
+        "Work item created successfully, but failed to establish parent/related/tested by links"
+        in result
+    )
+    assert "Invalid test case ID" in result
+    assert "# Work Item 123" in result
